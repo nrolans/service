@@ -47,7 +47,7 @@ func (s *SCPService) Stop() {
 }
 
 func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-chan *ssh.Request, sink SinkHandler, source SourceHandler) {
-	log.Printf("Received new connection: %s", srvConn.RemoteAddr())
+	// log.Printf("Received new connection: %s", srvConn.RemoteAddr())
 
 	// Discard the global requests
 	go ssh.DiscardRequests(reqs)
@@ -68,7 +68,7 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 			log.Println("Failed to accept session channel")
 			continue
 		}
-		log.Printf("Accepted new channel")
+		//log.Printf("Accepted new channel")
 
 		var params Parameter
 		var pattern string
@@ -85,7 +85,7 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 			for {
 				select {
 				case <-execTimer:
-					log.Println("Ran out of time...")
+					log.Println("Timed out while waiting for transfer request")
 					// Ran out of time, cleanup and close the connection
 					transferStatus = Refused
 					transferCond.Signal()
@@ -93,7 +93,7 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 					if !open {
 						return
 					}
-					log.Printf("Received new requests: %s", req.Type)
+					//log.Printf("Received new requests: %s", req.Type)
 
 					// Handle the request
 					ok := false
@@ -105,7 +105,7 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 						} else {
 
 							// We haven't received the SCP command yet, checking this exec request
-							log.Printf("Received request type %s: <%s>", req.Type, req.Payload[4:])
+							//log.Printf("Received request type %s: <%s>", req.Type, req.Payload[4:])
 							tokens := strings.Split(string(req.Payload[4:]), " ")
 							if tokens[0] != "scp" {
 								log.Printf("Unexpected exec command: %s", string(req.Payload[4:]))
@@ -115,6 +115,10 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 
 							// Read the direction and filename
 							for _, token := range tokens[1:] {
+								// Skip double spaces
+								if len(token) == 0 {
+									continue
+								}
 								if token[0] == '-' && len(token) > 1 {
 									params.Parse(token[1:])
 								} else if pattern == "" {
@@ -149,7 +153,7 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 								if sink.SinkRequest(*srvConn, params, pattern) {
 									transferStatus = Ready
 									ok = true
-									log.Printf("Accepting sink request")
+									//log.Printf("Accepting sink request")
 								} else {
 									transferStatus = Refused
 									ok = false
@@ -167,13 +171,11 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 					case "env":
 						// Accept environment variable (rejecting makes some clients unhappy)
 						ok = true
-						log.Println("Accepting env request")
+						//log.Println("Accepting env request")
 					}
 
 					// Reply if necessary
 					req.Reply(ok, nil)
-
-					log.Println("Reply sent")
 
 					// Unblock the channel code if we have made a decision
 					if transferStatus != Wait {
@@ -211,7 +213,7 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 			continue
 		}
 
-		log.Printf("Received line: %s", line)
+		// log.Printf("Received line: %s", line)
 
 		switch string(line[0]) {
 		case "C": // File transfer
@@ -239,12 +241,11 @@ func sshHandler(srvConn *ssh.ServerConn, chans <-chan ssh.NewChannel, reqs <-cha
 			break
 		}
 
-		log.Printf("Received a file from %s\n", srvConn.RemoteAddr())
+		// log.Printf("Received a file from %s\n", srvConn.RemoteAddr())
 
 		// Send a channel request with a successful exit-status
 		channel.SendRequest("exit-status", false, ssh.Marshal(exitStatus{0}))
 
-		log.Println("Bye bye")
 		channel.Close()
 	}
 }
